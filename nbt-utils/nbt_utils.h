@@ -42,6 +42,7 @@ namespace nbt {
       List      = 9,
       Compound  = 10,
       IntArray  = 11,
+      LongArray = 12,
       
       Unknown = -1 //!< Placeholder for when the type needs to be read
     };
@@ -52,6 +53,8 @@ namespace nbt {
   
   class Tag {
   public:
+    virtual ~Tag() {}
+
     std::string name;  //!< The name for this tag
     bool hasName;      //!< Whether this tag was named
     size_t startIndex, //!< The stream position this tag started on (set on read/write)
@@ -85,15 +88,21 @@ namespace nbt {
     static void write(Tag *tag, std::ostream &stream, TagType::Enum type = TagType::Unknown);
     static void write(Tag *tag, std::ostream &stream, const std::string &name, TagType::Enum type = TagType::Unknown);
     
-    static std::string serialize(Tag *tag, TagType::Enum type = TagType::Unknown) {
+    // I am really not happy about this, but embind wants us to return std::basic_string<unsigned char> here,
+    // because otherwise it will assume the output is UTF-8 encoded and mess up our data.
+    static std::basic_string<unsigned char> serialize(Tag *tag, TagType::Enum type = TagType::Unknown) {
       std::stringstream stream;
       if(tag->hasName) write(tag, stream, tag->name, type);
       else write(tag, stream, type);
-      return stream.str();
+      
+      auto c1 = stream.str();
+      return *(std::basic_string<unsigned char> *)&c1;
     }
     
-    static std::string serializeCompressed(Tag *tag, TagType::Enum type = TagType::Unknown) {
-      return zlibDeflate(serialize(tag, type));
+    static std::basic_string<unsigned char> serializeCompressed(Tag *tag, TagType::Enum type = TagType::Unknown) {
+      auto c1 = serialize(tag, type);
+      auto c2 = zlibDeflate(*(std::string *)&c1);
+      return *(std::basic_string<unsigned char> *)&c2;
     }
     
     virtual void readPayload(std::istream &stream) = 0;
@@ -184,6 +193,7 @@ namespace nbt {
   
   typedef Array<uint8_t> U8Array;
   typedef Array<int32_t> I32Array;
+  typedef Array<int64_t> I64Array;
   
 #pragma mark - Hash
   
@@ -223,6 +233,7 @@ namespace nbt {
   typedef PrimitiveTag<std::string , TagType::String    > StringTag;
   typedef PrimitiveTag<TagHash     , TagType::Compound  > CompoundTag;
   typedef PrimitiveTag<I32Array    , TagType::IntArray  > IntArrayTag;
+  typedef PrimitiveTag<I64Array    , TagType::LongArray > LongArrayTag;
   
 #pragma mark - Value serialization
   // (emscripten)
